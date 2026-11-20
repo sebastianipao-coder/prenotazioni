@@ -194,6 +194,11 @@ button.row:active,a.row:active{background:var(--fill)}
 .big{width:100%;background:var(--blue);color:#fff;border-radius:var(--r);padding:14px;font-size:17px;font-weight:600}
 .big:disabled{opacity:.6}
 .login-box .msg{margin:0}
+.link-btn{color:var(--blue);font-size:16px;padding:8px}
+.switch{margin-left:auto;width:51px;height:31px;border-radius:999px;background:var(--fill);position:relative;flex:none;transition:background .2s}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:27px;height:27px;border-radius:50%;background:#fff;box-shadow:0 2px 4px rgba(0,0,0,.2);transition:transform .2s}
+.switch[aria-checked="true"]{background:var(--green)}
+.switch[aria-checked="true"]::after{transform:translateX(20px)}
 @media (prefers-reduced-motion: reduce){ *{transition:none !important} }
 </style>
 </head>
@@ -333,6 +338,17 @@ button.row:active,a.row:active{background:var(--fill)}
 </div>
 
 <div class="toast" id="toast" role="status"></div>
+
+<div class="login" id="lock" hidden>
+  <div class="login-box">
+    <img src="icon-180.png" alt="">
+    <h1>Prenotazioni</h1>
+    <p>App bloccata. Sbloccala con Face ID per continuare.</p>
+    <button class="big" type="button" id="unlock-btn">Sblocca con Face ID</button>
+    <button class="link-btn" type="button" id="unlock-code">Usa il codice di accesso</button>
+    <p class="msg" id="lock-msg"></p>
+  </div>
+</div>
 
 <div class="login" id="login" hidden>
   <form class="login-box" id="login-form" autocomplete="on">
@@ -521,6 +537,8 @@ function renderTav(){
   const row=(title,detail)=> A?`<button type="button" class="row" data-turni>${'<span class="row-main"><span class="row-title">'+title+'</span><span class="row-sub">'+esc(detail)+'</span></span>'}${CHEV}</button>`:`<div class="row"><span class="row-main"><span class="row-title">${title}</span><span class="row-sub">${esc(detail)}</span></span></div>`;
   h+=`<div class="sec-h">Turni</div><div class="group">${row('Orari dei turni',sch('2'))}</div>`;
   h+=`<p class="sec-f">Tocca un tavolo per modificarlo, o i turni per cambiarne gli orari.</p>`;
+  if(S.bio){ const on=!!lockId();
+    h+=`<div class="sec-h">Questo telefono</div><div class="group"><div class="row"><span class="row-main"><span class="row-title">Sblocco con Face ID</span><span class="row-sub">${on?'Chiesto all\'apertura dell\'app':'Disattivato'}</span></span><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="Sblocco con Face ID" data-bio></button></div></div><p class="sec-f">L'app si blocca quando la riapri o dopo 2 minuti in background, e si sblocca con il viso. Vale solo per questo telefono.</p>`; }
   h+=`<div class="group" style="margin-top:28px"><button type="button" class="row danger" data-logout>Esci da questo dispositivo</button></div>`;
   $('#tav').innerHTML=h;
 }
@@ -550,6 +568,7 @@ $('#tav').onclick=e=>{
   const a=e.target.closest('[data-addres]'); if(a){ openTav(null,a.dataset.addres); return; }
   if(e.target.closest('[data-turni]')) openTurni();
   if(e.target.closest('[data-logout]')) logout();
+  if(e.target.closest('[data-bio]')) toggleBio();
 };
 $('#nav-add').onclick=()=>{ if(S.tab==='tavoli') openTav(null, S.sala||'Sala 1'); else openBooking(null,{data:ymd(S.date), turno:S.tab==='oggi'&&!wide()?S.turnoSel:null}); };
 
@@ -803,12 +822,14 @@ $('#login-form').addEventListener('submit', async e=>{
   const {error}=await sb.auth.signInWithPassword({email:CFG.email, password:pin});
   b.disabled=false;
   if(error){ $('#login-msg').className='msg bad'; $('#login-msg').textContent = /invalid/i.test(error.message)?'Codice non corretto.':'Accesso non riuscito. Controlla la connessione.'; return; }
-  start();
+  start(true);
 });
 async function logout(){ try{ await sb.auth.signOut(); }catch(_){} S.pren=[]; S.risorse=[]; S.loaded=false; showLogin(); }
 
-async function start(){
+async function start(fromLogin){
   $('#login').hidden=true;
+  await checkBio();
+  if(!fromLogin) showLock();
   try{ await loadAll(); }catch(e){ setNote('Non riesco a leggere le prenotazioni. Controlla la connessione e riapri l\'app.'); }
   if(!channel){
     channel=sb.channel('modifiche').on('postgres_changes',{event:'*',schema:'public'},reload).subscribe();
@@ -816,6 +837,42 @@ async function start(){
 }
 document.addEventListener('visibilitychange',()=>{ if(!document.hidden && sb && $('#login').hidden) reload(); });
 setInterval(()=>{ if(!document.hidden && sb && $('#login').hidden) reload(); }, 60000);
+
+/* ---------- Face ID (passkey locale) ---------- */
+const LOCK_KEY='prenotazioni-faceid', LOCK_AFTER=2*60*1000;
+const b64u=buf=>btoa(String.fromCharCode(...new Uint8Array(buf))).replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+const unb64u=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='.slice((s.length+3)%4)),c=>c.charCodeAt(0));
+function lockId(){ try{ return localStorage.getItem(LOCK_KEY); }catch(_){ return null; } }
+let hiddenAt=0;
+async function checkBio(){ try{ S.bio=!!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }catch(_){ S.bio=false; } }
+async function toggleBio(){
+  if(lockId()){ try{ localStorage.removeItem(LOCK_KEY); }catch(_){} render(); toast('Face ID disattivato'); return; }
+  try{
+    const cred=await navigator.credentials.create({publicKey:{
+      challenge:crypto.getRandomValues(new Uint8Array(32)),
+      rp:{name:'Prenotazioni'},
+      user:{id:crypto.getRandomValues(new Uint8Array(16)), name:'Prenotazioni', displayName:'Prenotazioni – staff'},
+      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+      authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'preferred'},
+      timeout:60000}});
+    localStorage.setItem(LOCK_KEY, b64u(cred.rawId));
+    render(); toast('Face ID attivato');
+  }catch(e){ setNote(e&&e.name==='NotAllowedError'?'Attivazione di Face ID annullata.':'Questo telefono non permette di attivare Face ID per l\'app.'); }
+}
+function showLock(){ if(!lockId()) return; $('#lock').hidden=false; $('#lock-msg').textContent=''; document.body.style.overflow='hidden'; }
+async function unlock(){
+  const id=lockId(); if(!id){ $('#lock').hidden=true; return; }
+  try{
+    await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)), allowCredentials:[{type:'public-key', id:unb64u(id), transports:['internal']}], userVerification:'required', timeout:60000}});
+    $('#lock').hidden=true; document.body.style.overflow=openSheet?'hidden':''; reload();
+  }catch(e){ $('#lock-msg').className='msg bad'; $('#lock-msg').textContent='Sblocco non riuscito. Riprova o usa il codice di accesso.'; }
+}
+$('#unlock-btn').onclick=unlock;
+$('#unlock-code').onclick=async()=>{ $('#lock').hidden=true; await logout(); };
+document.addEventListener('visibilitychange',()=>{
+  if(document.hidden){ hiddenAt=Date.now(); return; }
+  if(hiddenAt && Date.now()-hiddenAt>LOCK_AFTER && $('#login').hidden && lockId()) showLock();
+});
 
 /* ---------- avvio ---------- */
 route();
