@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<meta name="apple-mobile-web-app-title" content="Prenotazioni">
+<meta name="theme-color" content="#F2F2F7">
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-180.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.min.js"></script>
+<script src="config.js"></script>
+<title>Gestione Prenotazioni</title>
+<style>
+:root{
+  /* Layout: app iOS a schede (barra in basso), titolo grande, liste raggruppate, fogli che salgono dal basso */
+  --bg:#F2F2F7; --card:#FFFFFF; --card2:#F2F2F7; --label:#000000; --label2:rgba(60,60,67,.6); --label3:rgba(60,60,67,.3);
+  --sep:rgba(60,60,67,.18); --fill:rgba(118,118,128,.12); --bar:rgba(249,249,249,.86);
+  --blue:#007AFF; --green:#34C759; --orange:#FF9500; --red:#FF3B30; --tint:rgba(0,122,255,.1);
+  --font:-apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", system-ui, "Segoe UI", Roboto, sans-serif;
+  --display:-apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", system-ui, "Segoe UI", Roboto, sans-serif;
+  --r:12px;
+  --st:env(safe-area-inset-top,0px); --sb:env(safe-area-inset-bottom,0px); --sl:env(safe-area-inset-left,0px); --sr:env(safe-area-inset-right,0px);
+  color-scheme:light;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#000000; --card:#1C1C1E; --card2:#2C2C2E; --label:#FFFFFF; --label2:rgba(235,235,245,.6); --label3:rgba(235,235,245,.3);
+    --sep:rgba(84,84,88,.65); --fill:rgba(118,118,128,.24); --bar:rgba(22,22,24,.82);
+    --blue:#0A84FF; --green:#30D158; --orange:#FF9F0A; --red:#FF453A; --tint:rgba(10,132,255,.18); color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#000000; --card:#1C1C1E; --card2:#2C2C2E; --label:#FFFFFF; --label2:rgba(235,235,245,.6); --label3:rgba(235,235,245,.3);
+  --sep:rgba(84,84,88,.65); --fill:rgba(118,118,128,.24); --bar:rgba(22,22,24,.82);
+  --blue:#0A84FF; --green:#30D158; --orange:#FF9F0A; --red:#FF453A; --tint:rgba(10,132,255,.18); color-scheme:dark;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--label);font:17px/1.3 var(--font);-webkit-font-smoothing:antialiased;letter-spacing:-.01em}
+button,input,select,textarea{font:inherit;color:inherit;letter-spacing:inherit}
+button{background:none;border:0;padding:0;cursor:pointer}
+:focus-visible{outline:2px solid var(--blue);outline-offset:2px;border-radius:6px}
+svg.i{width:24px;height:24px;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round;flex:none}
+[hidden]{display:none !important}
+
+/* Barra superiore */
+.navbar{position:sticky;top:0;z-index:10;padding:calc(var(--st) + 6px) calc(16px + var(--sr)) 6px calc(16px + var(--sl));display:grid;grid-template-columns:1fr auto 1fr;align-items:center;min-height:calc(44px + var(--st));
+  background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-bottom:.5px solid transparent;transition:border-color .2s}
+.navbar.scrolled{border-bottom-color:var(--sep)}
+.navbar .small-title{font-weight:600;font-size:17px;opacity:0;transition:opacity .2s;white-space:nowrap}
+.navbar.scrolled .small-title{opacity:1}
+.navbar .left{justify-self:start}.navbar .right{justify-self:end;display:flex;gap:18px}
+.navbtn{color:var(--blue);font-size:17px;display:inline-flex;align-items:center;gap:2px;min-height:44px}
+.navbtn:disabled{color:var(--label3)}
+.navbtn svg.i{width:26px;height:26px;stroke-width:2}
+
+main{max-width:1180px;margin:0 auto;padding:0 calc(16px + var(--sr)) calc(100px + var(--sb)) calc(16px + var(--sl))}
+.large{font:700 34px/1.1 var(--display);letter-spacing:.01em;margin:4px 0 2px;text-wrap:balance}
+.large-sub{color:var(--label2);font-size:15px;margin:0 0 14px;text-transform:capitalize}
+
+/* Liste raggruppate */
+.sec-h{font-size:13px;color:var(--label2);text-transform:uppercase;letter-spacing:.02em;margin:22px 16px 7px;display:flex;justify-content:space-between;gap:8px}
+.sec-f{font-size:13px;color:var(--label2);margin:7px 16px 0;line-height:1.35}
+.group{background:var(--card);border-radius:var(--r);overflow:hidden}
+.row{display:flex;align-items:center;gap:12px;width:100%;min-height:50px;padding:10px 16px;text-align:left;position:relative;background:var(--card)}
+.row+.row::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--sep)}
+.row.ind+.row::before,.row+.row.ind::before{left:44px}
+button.row:active,a.row:active{background:var(--fill)}
+.row-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+.row-title{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-sub{font-size:14px;color:var(--label2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.row-detail{color:var(--label2);text-align:right;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:55%;font-variant-numeric:tabular-nums}
+.row-detail.strong{color:var(--label);font-weight:500}
+.row-detail.free{color:var(--green)}
+.row .chev{color:var(--label3);width:14px;height:14px;stroke-width:2.6}
+.row.blue{color:var(--blue)}
+.row.danger{color:var(--red);justify-content:center}
+.row.center{justify-content:center}
+.dot{width:10px;height:10px;border-radius:50%;flex:none;background:var(--fill)}
+.dot.st-confermata{background:var(--blue)}
+.dot.st-in_attesa{background:var(--orange)}
+.dot.st-arrivato{background:var(--green)}
+.dot.st-cancellata{background:var(--label3)}
+.dot.free{background:none;border:1.5px solid var(--green)}
+.pill{font-size:13px;font-weight:600;padding:3px 9px;border-radius:999px;white-space:nowrap}
+.pill.st-confermata{background:var(--tint);color:var(--blue)}
+.pill.st-in_attesa{background:color-mix(in srgb,var(--orange) 16%,transparent);color:var(--orange)}
+.pill.st-arrivato{background:color-mix(in srgb,var(--green) 16%,transparent);color:var(--green)}
+.pill.st-cancellata{background:var(--fill);color:var(--label2)}
+.row.cancel .row-title{text-decoration:line-through;color:var(--label2)}
+.empty{padding:28px 20px;text-align:center;color:var(--label2);font-size:15px}
+.empty b{display:block;color:var(--label);font-size:17px;margin-bottom:4px}
+
+/* Controllo segmentato */
+.seg{display:flex;background:var(--fill);border-radius:9px;padding:2px;gap:2px}
+.seg button{flex:1;padding:6px 10px;border-radius:7px;font-size:13px;font-weight:500;white-space:nowrap;color:var(--label)}
+.seg button[aria-pressed="true"]{background:var(--card);box-shadow:0 3px 8px rgba(0,0,0,.12),0 1px 1px rgba(0,0,0,.04);font-weight:600}
+:root[data-theme="dark"] .seg button[aria-pressed="true"]{background:#636366}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]) .seg button[aria-pressed="true"]{background:#636366}}
+.seg button:disabled{opacity:.5;cursor:default}
+
+/* Striscia settimana */
+.week{display:flex;align-items:center;gap:4px;background:var(--card);border-radius:var(--r);padding:8px 6px}
+.week .wk-nav{color:var(--blue);width:32px;height:44px;display:grid;place-items:center;flex:none}
+.week .days{flex:1;display:grid;grid-template-columns:repeat(7,1fr);gap:2px}
+.day{display:flex;flex-direction:column;align-items:center;gap:4px;padding:2px 0}
+.day .wd{font-size:11px;color:var(--label2);text-transform:uppercase;font-weight:600}
+.day .num{width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-size:18px;font-variant-numeric:tabular-nums}
+.day.today .num{color:var(--red);font-weight:600}
+.day.sel .num{background:var(--label);color:var(--card);font-weight:600}
+.day.sel.today .num{background:var(--red);color:#fff}
+.day .mk{width:5px;height:5px;border-radius:50%;background:transparent}
+.day .mk.on{background:var(--label3)}
+
+/* Schede turno */
+.turns{display:flex;gap:10px;overflow-x:auto;padding:2px 2px 4px;margin:14px -2px 0;scrollbar-width:none}
+.turns::-webkit-scrollbar{display:none}
+.turn{flex:1 0 150px;background:var(--card);border-radius:var(--r);padding:12px 14px;text-align:left;border:2px solid transparent;display:flex;flex-direction:column;gap:2px}
+.turn[aria-pressed="true"]{border-color:var(--blue)}
+.turn .t1{font-weight:600}
+.turn .t2{font-size:14px;color:var(--label2);font-variant-numeric:tabular-nums}
+.turn .t3{font-size:14px;margin-top:6px;font-variant-numeric:tabular-nums}
+.turn .t3 b{font-size:20px;font-weight:700;font-family:var(--display)}
+.turn.past{opacity:.6}
+.controls{display:flex;flex-wrap:wrap;gap:10px;margin-top:14px;align-items:center}
+.controls .seg{flex:1;min-width:220px}
+.controls .lbl{font-size:13px;color:var(--label2)}
+.cols{display:grid;gap:0 16px}
+@media (min-width:960px){ .cols{grid-template-columns:repeat(var(--n),1fr)} .turn{cursor:default} }
+
+/* Ricerca */
+.search{display:flex;align-items:center;gap:6px;background:var(--fill);border-radius:10px;padding:0 8px;height:36px}
+.search svg.i{width:18px;height:18px;color:var(--label2)}
+.search input{flex:1;border:0;background:none;outline:none;font-size:17px;min-width:0}
+.search input::placeholder{color:var(--label2)}
+
+/* Barra schede in basso */
+.tabbar{position:fixed;left:0;right:0;bottom:0;z-index:10;display:flex;justify-content:center;gap:0;padding:6px calc(8px + var(--sr)) calc(6px + var(--sb)) calc(8px + var(--sl));
+  background:var(--bar);-webkit-backdrop-filter:saturate(180%) blur(20px);backdrop-filter:saturate(180%) blur(20px);border-top:.5px solid var(--sep)}
+.tabbar a{flex:1;max-width:160px;display:flex;flex-direction:column;align-items:center;gap:2px;padding:2px 0;color:var(--label2);text-decoration:none;font-size:10.5px;font-weight:500}
+.tabbar a[aria-current="page"]{color:var(--blue)}
+.tabbar svg.i{width:27px;height:27px}
+
+/* Fogli */
+.backdrop{position:fixed;inset:0;z-index:30;background:rgba(0,0,0,0);transition:background .28s;display:flex;align-items:flex-end;justify-content:center}
+.backdrop.open{background:rgba(0,0,0,.35)}
+.sheet{width:100%;max-width:620px;max-height:calc(100% - var(--st) - 12px);background:var(--bg);border-radius:12px 12px 0 0;transform:translateY(100%);transition:transform .32s cubic-bezier(.2,.9,.25,1);display:flex;flex-direction:column;overflow:hidden}
+.backdrop.open .sheet{transform:none}
+@media (min-width:700px){ .backdrop{align-items:center} .sheet{border-radius:14px;max-height:88%} }
+.sheet-head{display:grid;grid-template-columns:1fr auto 1fr;align-items:center;padding:6px 16px;min-height:56px;border-bottom:.5px solid var(--sep);background:var(--bar);-webkit-backdrop-filter:blur(20px);backdrop-filter:blur(20px)}
+.sheet-head h2{font-size:17px;font-weight:600;margin:0}
+.sheet-head .left{justify-self:start}.sheet-head .right{justify-self:end}
+.sheet-head .right .navbtn{font-weight:600}
+.sheet-body{overflow:auto;padding:0 16px calc(28px + var(--sb));-webkit-overflow-scrolling:touch}
+.f-row{display:flex;align-items:center;gap:12px;min-height:46px;padding:4px 16px;position:relative;background:var(--card)}
+.f-row+.f-row::before{content:"";position:absolute;top:0;left:16px;right:0;border-top:.5px solid var(--sep)}
+.f-row label{flex:none;min-width:92px}
+.f-row input,.f-row select,.f-row textarea{flex:1;min-width:0;border:0;background:none;outline:none;text-align:right;color:var(--label2);padding:8px 0;font-size:17px}
+.f-row select{-webkit-appearance:none;appearance:none;direction:rtl;text-align:right;cursor:pointer;color:var(--blue)}
+.f-row select option{direction:ltr}
+.f-row input[type="date"],.f-row input[type="time"]{color:var(--blue);-webkit-appearance:none;appearance:none}
+.f-row input:focus{color:var(--label)}
+.f-row.stack{flex-direction:column;align-items:stretch;gap:4px;padding:10px 16px}
+.f-row.stack label{font-size:13px;color:var(--label2)}
+.f-row textarea{text-align:left;color:var(--label);min-height:70px;resize:vertical;padding:0}
+.f-row input::placeholder,.f-row textarea::placeholder{color:var(--label3)}
+.f-row .seg{flex:1}
+.f-row .times{display:flex;align-items:center;gap:6px;margin-left:auto}
+.f-row .times input{flex:none;width:auto;text-align:center;background:var(--fill);border-radius:7px;padding:5px 8px;color:var(--label)}
+.stepper{margin-left:auto;display:flex;align-items:center;gap:0;background:var(--fill);border-radius:9px;overflow:hidden}
+.stepper button{width:44px;height:32px;font-size:22px;line-height:1;color:var(--label)}
+.stepper button+span,.stepper span+button{border-left:.5px solid var(--sep)}
+.stepper span{min-width:40px;text-align:center;font-variant-numeric:tabular-nums;font-weight:600;align-self:stretch;display:grid;place-items:center}
+.msg{margin:12px 16px 0;font-size:14px;line-height:1.35}
+.msg:empty{display:none}
+.msg.bad{color:var(--red)} .msg.warn{color:var(--orange)} .msg.ok{color:var(--green)} .msg.info{color:var(--label2)}
+.meta{font-size:13px;color:var(--label2);margin:10px 16px 0}
+.call{color:var(--blue);text-decoration:none;font-size:15px;white-space:nowrap}
+
+.note{margin:10px 0 0;padding:12px 14px;border-radius:var(--r);background:color-mix(in srgb,var(--orange) 14%,var(--card));font-size:14px}
+.toast{position:fixed;left:50%;bottom:calc(84px + var(--sb));transform:translate(-50%,20px);opacity:0;z-index:40;background:rgba(30,30,32,.92);color:#fff;padding:10px 16px;border-radius:999px;font-size:15px;font-weight:500;transition:opacity .2s, transform .2s;pointer-events:none;white-space:nowrap}
+.toast.show{opacity:1;transform:translate(-50%,0)}
+.login{position:fixed;inset:0;z-index:50;background:var(--bg);display:grid;place-items:center;padding:calc(24px + var(--st)) 24px calc(24px + var(--sb))}
+.login-box{width:100%;max-width:340px;display:grid;gap:14px;text-align:center}
+.login-box img{width:84px;height:84px;border-radius:19px;margin:0 auto 4px;box-shadow:0 6px 18px rgba(0,0,0,.12)}
+.login-box h1{font:700 28px/1.1 var(--display);margin:0}
+.login-box p{margin:0;color:var(--label2);font-size:15px}
+.login-box input{width:100%;border:0;border-radius:var(--r);background:var(--card);padding:14px 16px;font-size:17px;text-align:center;outline:none}
+.login-box input:focus{box-shadow:0 0 0 2px var(--blue)}
+.big{width:100%;background:var(--blue);color:#fff;border-radius:var(--r);padding:14px;font-size:17px;font-weight:600}
+.big:disabled{opacity:.6}
+.login-box .msg{margin:0}
+@media (prefers-reduced-motion: reduce){ *{transition:none !important} }
+</style>
+</head>
+<body>
+<header class="navbar" id="navbar">
+  <div class="left"><button class="navbtn" id="nav-left" type="button">Oggi</button></div>
+  <div class="small-title" id="small-title">Calendario</div>
+  <div class="right"><button class="navbtn" id="nav-add" type="button" aria-label="Aggiungi"><svg class="i" viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg></button></div>
+</header>
+
+<main>
+  <div class="note" id="note" hidden></div>
+
+  <!-- CALENDARIO -->
+  <section id="tab-oggi">
+    <h1 class="large" id="cal-title"></h1>
+    <p class="large-sub" id="cal-sub"></p>
+    <div class="week">
+      <button class="wk-nav" id="wk-prev" type="button" aria-label="Settimana precedente"><svg class="i" viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg></button>
+      <div class="days" id="days"></div>
+      <button class="wk-nav" id="wk-next" type="button" aria-label="Settimana successiva"><svg class="i" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg></button>
+    </div>
+    <div class="turns" id="turns"></div>
+    <div class="controls">
+      <div class="seg" id="sala-seg"><button type="button" data-s="">Tutte le sale</button><button type="button" data-s="Sala 1">Sala 1</button><button type="button" data-s="Sala 2">Sala 2</button></div>
+    </div>
+    <div id="cal"></div>
+  </section>
+
+  <!-- ELENCO -->
+  <section id="tab-elenco" hidden>
+    <h1 class="large">Prenotazioni</h1>
+    <p class="large-sub" id="list-sub"></p>
+    <div class="search"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg><input type="search" id="f-q" placeholder="Cerca nome, telefono, note" aria-label="Cerca"></div>
+    <div class="controls">
+      <div class="seg" id="mode-seg"><button type="button" data-m="prossime">Prossime</button><button type="button" data-m="passate">Passate</button><button type="button" data-m="tutte">Tutte</button></div>
+      <div class="seg" id="lsala-seg" style="flex:0 0 auto;min-width:0"><button type="button" data-s="">Tutte</button><button type="button" data-s="Sala 1">Sala 1</button><button type="button" data-s="Sala 2">Sala 2</button></div>
+    </div>
+    <div id="list"></div>
+  </section>
+
+  <!-- TAVOLI E TURNI -->
+  <section id="tab-tavoli" hidden>
+    <h1 class="large">Tavoli e turni</h1>
+    <p class="large-sub" id="tav-sub"></p>
+    <div id="tav"></div>
+  </section>
+</main>
+
+<nav class="tabbar" aria-label="Sezioni">
+  <a href="#oggi" data-tab="oggi"><svg class="i" viewBox="0 0 24 24"><rect x="3.5" y="5" width="17" height="15.5" rx="3.5"/><path d="M3.5 10h17M8 3v4M16 3v4"/></svg>Calendario</a>
+  <a href="#elenco" data-tab="elenco"><svg class="i" viewBox="0 0 24 24"><path d="M9.5 6.5h10M9.5 12h10M9.5 17.5h10"/><circle cx="5" cy="6.5" r=".9"/><circle cx="5" cy="12" r=".9"/><circle cx="5" cy="17.5" r=".9"/></svg>Prenotazioni</a>
+  <a href="#tavoli" data-tab="tavoli"><svg class="i" viewBox="0 0 24 24"><rect x="4" y="4" width="7" height="7" rx="2"/><rect x="13" y="4" width="7" height="7" rx="2"/><rect x="4" y="13" width="7" height="7" rx="2"/><rect x="13" y="13" width="7" height="7" rx="2"/></svg>Tavoli</a>
+</nav>
+
+<!-- FOGLIO PRENOTAZIONE -->
+<div class="backdrop" id="bk-sheet" hidden>
+  <form class="sheet" id="bk-form" autocomplete="off" role="dialog" aria-modal="true" aria-labelledby="bk-title">
+    <div class="sheet-head">
+      <div class="left"><button class="navbtn" type="button" data-close>Annulla</button></div>
+      <h2 id="bk-title">Nuova prenotazione</h2>
+      <div class="right"><button class="navbtn" type="submit" id="bk-save">Salva</button></div>
+    </div>
+    <div class="sheet-body">
+      <div class="msg" id="bk-msg"></div>
+      <div class="sec-h">Quando</div>
+      <div class="group">
+        <div class="f-row"><label for="b-data">Data</label><input type="date" id="b-data" required></div>
+        <div class="f-row"><label for="b-turno">Turno</label><select id="b-turno"></select></div>
+        <div class="f-row" id="b-custom-a" hidden><label for="b-ora">Arrivo</label><input type="time" id="b-ora" step="900"></div>
+        <div class="f-row" id="b-custom-b" hidden><label for="b-durata">Durata</label><select id="b-durata"></select></div>
+        <div class="f-row"><label for="b-risorsa">Tavolo</label><select id="b-risorsa" required></select></div>
+      </div>
+      <div class="sec-h">Cliente</div>
+      <div class="group">
+        <div class="f-row"><label for="b-cliente">Nome</label><input type="text" id="b-cliente" placeholder="Obbligatorio" required></div>
+        <div class="f-row"><label for="b-persone-v">Coperti</label>
+          <div class="stepper"><button type="button" id="p-minus" aria-label="Meno coperti">−</button><span id="b-persone-v" aria-live="polite">2</span><button type="button" id="p-plus" aria-label="Più coperti">+</button></div>
+        </div>
+        <div class="f-row"><label for="b-tel">Telefono</label><input type="tel" id="b-tel" placeholder="Facoltativo" inputmode="tel"></div>
+        <div class="f-row"><label for="b-email">Email</label><input type="email" id="b-email" placeholder="Facoltativa" inputmode="email"></div>
+      </div>
+      <div class="sec-h">Stato</div>
+      <div class="group">
+        <div class="f-row"><div class="seg" id="b-stato">
+          <button type="button" data-st="confermata">Confermata</button><button type="button" data-st="in_attesa">In attesa</button><button type="button" data-st="arrivato">Arrivato</button><button type="button" data-st="cancellata">Cancellata</button>
+        </div></div>
+      </div>
+      <div class="sec-h">Note</div>
+      <div class="group">
+        <div class="f-row stack"><textarea id="b-note" aria-label="Note" placeholder="Allergie, seggiolone, compleanno, arrivo in ritardo…"></textarea></div>
+      </div>
+      <div class="meta" id="bk-meta"></div>
+      <div class="group" id="bk-del-wrap" style="margin-top:22px"><button class="row danger" type="button" id="bk-del">Elimina prenotazione</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- FOGLIO TAVOLO -->
+<div class="backdrop" id="tav-sheet" hidden>
+  <form class="sheet" id="tav-form" autocomplete="off" role="dialog" aria-modal="true" aria-labelledby="tav-title">
+    <div class="sheet-head">
+      <div class="left"><button class="navbtn" type="button" data-close>Annulla</button></div>
+      <h2 id="tav-title">Nuovo tavolo</h2>
+      <div class="right"><button class="navbtn" type="submit">Salva</button></div>
+    </div>
+    <div class="sheet-body">
+      <div class="msg" id="tav-msg"></div>
+      <div class="sec-h">Tavolo</div>
+      <div class="group">
+        <div class="f-row"><label for="r-nome">Nome</label><input type="text" id="r-nome" placeholder="es. Tavolo 12" required></div>
+        <div class="f-row"><label for="r-cap-v">Posti</label>
+          <div class="stepper"><button type="button" id="c-minus" aria-label="Meno posti">−</button><span id="r-cap-v">4</span><button type="button" id="c-plus" aria-label="Più posti">+</button></div>
+        </div>
+        <div class="f-row"><div class="seg" id="r-sala"><button type="button" data-s="Sala 1">Sala 1</button><button type="button" data-s="Sala 2">Sala 2</button></div></div>
+      </div>
+      <div class="group" id="tav-del-wrap" style="margin-top:22px"><button class="row danger" type="button" id="tav-del">Elimina tavolo</button></div>
+    </div>
+  </form>
+</div>
+
+<!-- FOGLIO TURNI -->
+<div class="backdrop" id="turni-sheet" hidden>
+  <form class="sheet" id="turni-form" autocomplete="off" role="dialog" aria-modal="true" aria-labelledby="turni-title">
+    <div class="sheet-head">
+      <div class="left"><button class="navbtn" type="button" data-close>Annulla</button></div>
+      <h2 id="turni-title">Turni</h2>
+      <div class="right"><button class="navbtn" type="submit">Salva</button></div>
+    </div>
+    <div class="sheet-body">
+      <div class="msg" id="turni-msg"></div>
+      <div class="sec-h">Orari dei turni</div>
+      <div class="group" id="sch-2"></div>
+      <p class="sec-f">Valgono per tutti i giorni. Le prenotazioni già inserite mantengono il loro orario.</p>
+    </div>
+  </form>
+</div>
+
+<div class="toast" id="toast" role="status"></div>
+
+<div class="login" id="login" hidden>
+  <form class="login-box" id="login-form" autocomplete="on">
+    <img src="icon-180.png" alt="">
+    <h1>Prenotazioni</h1>
+    <p id="login-text">Inserisci il codice di accesso del locale.</p>
+    <input type="password" id="pin" autocomplete="current-password" placeholder="Codice di accesso" aria-label="Codice di accesso">
+    <button class="big" type="submit" id="login-btn">Entra</button>
+    <p class="msg" id="login-msg"></p>
+  </form>
+</div>
+
+<script>
+/* ---------- utilità ---------- */
+const $ = s => document.querySelector(s);
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const pad = n => String(n).padStart(2,'0');
+const ymd = d => `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+const hm = d => `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+const toStr = d => ymd(d)+'T'+hm(d);
+const parse = s => new Date(s);
+const addDays = (d,n) => { const x=new Date(d); x.setDate(x.getDate()+n); return x; };
+const sod = d => { const x=new Date(d); x.setHours(0,0,0,0); return x; };
+const weekStart = d => { const x=sod(d); x.setDate(x.getDate()-((x.getDay()+6)%7)); return x; };
+const fmt = (d,o) => d.toLocaleDateString('it-IT',o);
+const dateOf = s => parse(s+'T12:00');
+const sleep = ms => new Promise(r=>setTimeout(r,ms));
+const cap = s => s.charAt(0).toUpperCase()+s.slice(1);
+const CHEV = '<svg class="i chev" viewBox="0 0 24 24"><path d="M9 6l6 6-6 6"/></svg>';
+
+const SALE=['Sala 1','Sala 2'];
+const GIORNI=['lunedì','martedì','mercoledì','giovedì','venerdì','sabato','domenica'];
+const STATI={confermata:'Confermata',in_attesa:'In attesa',arrivato:'Arrivato',cancellata:'Cancellata'};
+const DURATE=[60,90,120,150,180];
+const DEFAULT_CFG={
+  schemi:{'2':[{inizio:'18:30',fine:'20:00'},{inizio:'20:00',fine:'21:30'}],
+          '3':[{inizio:'19:00',fine:'20:30'},{inizio:'20:30',fine:'22:00'},{inizio:'22:00',fine:'23:30'}]},
+  settimana:['2','2','2','2','2','2','2'], eccezioni:{}
+};
+const S = {
+  risorse:[], pren:[], cfg:null, tab:'oggi', date:sod(new Date()), turnoSel:null, sala:'', lsala:'', mode:'prossime',
+  db:null, user:null, uid:null, canWrite:true, canAdmin:true, offline:false, loaded:false,
+  editing:null, resEditing:null, stato:'confermata', persone:2, capienza:4, rsala:'Sala 1'
+};
+const cfg = () => S.cfg || DEFAULT_CFG;
+const wide = () => matchMedia('(min-width:960px)').matches;
+
+function setNote(t){ $('#note').textContent=t; $('#note').hidden=!t; }
+let toastT; function toast(t){ const el=$('#toast'); el.textContent=t; el.classList.add('show'); clearTimeout(toastT); toastT=setTimeout(()=>el.classList.remove('show'),1800); }
+
+/* ---------- turni ---------- */
+function schemaFor(d){ return '2'; }
+function turniFor(d){
+  const list=(cfg().schemi&&cfg().schemi[schemaFor(d)])||[], day=ymd(d), next=ymd(addDays(d,1));
+  return list.map((t,i)=>({idx:i, nome:`${i+1}° turno`, ini:day+'T'+t.inizio, fin:(t.fine<=t.inizio?next:day)+'T'+t.fine, label:`${t.inizio}–${t.fine}`}));
+}
+const overlaps = (p,ini,fin) => p.inizio<fin && ini<p.fine;
+const live = () => S.pren.filter(p=>p.stato!=='cancellata');
+const resById = id => S.risorse.find(r=>r.id===id);
+const salaOf = r => SALE.includes(r&&r.zona) ? r.zona : 'Sala 1';
+const sortRes = list => list.filter(r=>r.tipo!=='camera').sort((a,b)=> SALE.indexOf(salaOf(a))-SALE.indexOf(salaOf(b)) || String(a.nome).localeCompare(String(b.nome),'it',{numeric:true}));
+const activeConflicts = (rid,ini,fin,exclId,list=S.pren) => list.filter(p=>p.risorsaId===rid && p.id!==exclId && p.stato!=='cancellata' && overlaps(p,ini,fin));
+const cop = l => l.reduce((n,p)=>n+(+p.persone||0),0);
+function turnoLabel(p){
+  const t=turniFor(dateOf(p.inizio.slice(0,10))).find(t=>t.ini===p.inizio&&t.fin===p.fine);
+  return t ? `${t.nome} · ${t.label}` : `${p.inizio.slice(11)}–${p.fine.slice(11)}`;
+}
+function defaultTurno(d){
+  const turni=turniFor(d); if(!turni.length) return 0;
+  if(ymd(d)!==ymd(new Date())) return 0;
+  const now=toStr(new Date()), t=turni.find(t=>t.fin>now); return t?t.idx:turni.length-1;
+}
+
+/* ---------- render ---------- */
+function render(){
+  document.querySelectorAll('.tabbar a').forEach(a=>{ if(a.dataset.tab===S.tab) a.setAttribute('aria-current','page'); else a.removeAttribute('aria-current'); });
+  ['oggi','elenco','tavoli'].forEach(t=>$('#tab-'+t).hidden=t!==S.tab);
+  $('#small-title').textContent = {oggi:fmt(S.date,{weekday:'short',day:'numeric',month:'short'}), elenco:'Prenotazioni', tavoli:'Tavoli e turni'}[S.tab];
+  $('#nav-left').hidden = S.tab!=='oggi' || ymd(S.date)===ymd(new Date());
+  $('#nav-add').hidden = S.tab==='tavoli' ? !S.canAdmin : !S.canWrite;
+  if(S.tab==='oggi') renderCal();
+  if(S.tab==='elenco') renderList();
+  if(S.tab==='tavoli') renderTav();
+}
+
+function renderCal(){
+  const d=S.date, todayStr=ymd(new Date()), isToday=ymd(d)===todayStr;
+  $('#cal-title').textContent = isToday ? 'Oggi' : cap(fmt(d,{weekday:'long'}))+' '+d.getDate();
+  $('#cal-sub').textContent = fmt(d,{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  // settimana
+  const ws=weekStart(d), L=live();
+  const withBk=new Set(L.map(p=>p.inizio.slice(0,10)));
+  $('#days').innerHTML=[...Array(7)].map((_,i)=>{ const x=addDays(ws,i), k=ymd(x);
+    return `<button type="button" class="day${k===todayStr?' today':''}${k===ymd(d)?' sel':''}" data-d="${k}" aria-label="${esc(fmt(x,{weekday:'long',day:'numeric',month:'long'}))}"><span class="wd">${fmt(x,{weekday:'narrow'})}</span><span class="num">${x.getDate()}</span><span class="mk${withBk.has(k)?' on':''}"></span></button>`; }).join('');
+  // turni
+  const turni=turniFor(d), tavoli=sortRes(S.risorse).filter(r=>!S.sala||salaOf(r)===S.sala), now=toStr(new Date());
+  if(S.turnoSel==null || S.turnoSel>=turni.length) S.turnoSel=defaultTurno(d);
+  const W=wide();
+  $('#turns').innerHTML=turni.map(t=>{
+    const b=L.filter(p=>tavoli.some(r=>r.id===p.risorsaId)&&overlaps(p,t.ini,t.fin)), occ=new Set(b.map(p=>p.risorsaId)).size;
+    return `<button type="button" class="turn${t.fin<=now?' past':''}" data-t="${t.idx}" aria-pressed="${!W&&t.idx===S.turnoSel}"><span class="t1">${t.nome}</span><span class="t2">${t.label}</span><span class="t3"><b>${cop(b)}</b> coperti · ${tavoli.length-occ} liberi</span></button>`;
+  }).join('');
+  document.querySelectorAll('#sala-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.s===S.sala));
+
+  const cal=$('#cal');
+  if(!S.loaded && !S.offline){ cal.innerHTML='<div class="group" style="margin-top:20px"><div class="empty">Caricamento…</div></div>'; return; }
+  if(!tavoli.length){ cal.innerHTML=`<div class="group" style="margin-top:20px"><div class="empty"><b>Nessun tavolo${S.sala?' in '+esc(S.sala):''}</b>Aggiungili nella scheda Tavoli.</div></div>`; return; }
+  const shown = W ? turni : turni.filter(t=>t.idx===S.turnoSel);
+  const fuori=L.filter(p=>p.inizio.slice(0,10)===ymd(d) && tavoli.some(r=>r.id===p.risorsaId) && !turni.some(t=>overlaps(p,t.ini,t.fin)));
+  let h=`<div class="cols" style="--n:${shown.length}">`;
+  for(const t of shown){
+    h+='<div>';
+    for(const s of SALE){
+      const list=tavoli.filter(r=>salaOf(r)===s); if(!list.length) continue;
+      const bk=L.filter(p=>list.some(r=>r.id===p.risorsaId)&&overlaps(p,t.ini,t.fin));
+      h+=`<div class="sec-h"><span>${W?t.nome+' · ':''}${s}</span><span>${cop(bk)} coperti</span></div><div class="group">`;
+      for(const r of list){
+        const b=bk.filter(p=>p.risorsaId===r.id);
+        if(!b.length){
+          h+= S.canWrite
+            ? `<button type="button" class="row ind" data-new="${esc(r.id)}" data-t="${t.idx}"><span class="dot free"></span><span class="row-main"><span class="row-title">${esc(r.nome)}</span><span class="row-sub">${esc(r.capienza||'?')} posti</span></span><span class="row-detail free">Libero</span>${CHEV}</button>`
+            : `<div class="row ind"><span class="dot free"></span><span class="row-main"><span class="row-title">${esc(r.nome)}</span><span class="row-sub">${esc(r.capienza||'?')} posti</span></span><span class="row-detail free">Libero</span></div>`;
+        }
+        for(const p of b){
+          const oth=(p.inizio!==t.ini||p.fine!==t.fin)?` · ${p.inizio.slice(11)}`:'';
+          h+=`<button type="button" class="row ind" data-id="${esc(p.id)}"><span class="dot st-${esc(p.stato)}"></span><span class="row-main"><span class="row-title">${esc(r.nome)}</span><span class="row-sub">${esc(STATI[p.stato]||'')}${oth}${p.note?' · '+esc(p.note):''}</span></span><span class="row-detail strong">${esc(p.cliente)} · ${esc(p.persone)}</span>${CHEV}</button>`;
+        }
+      }
+      h+='</div>';
+    }
+    h+='</div>';
+  }
+  h+='</div>';
+  if(fuori.length){
+    h+=`<div class="sec-h"><span>Altro orario</span><span>${cop(fuori)} coperti</span></div><div class="group">`+fuori.sort((a,b)=>a.inizio<b.inizio?-1:1).map(p=>{ const r=resById(p.risorsaId);
+      return `<button type="button" class="row ind" data-id="${esc(p.id)}"><span class="dot st-${esc(p.stato)}"></span><span class="row-main"><span class="row-title">${esc(r?r.nome:'Tavolo')}</span><span class="row-sub">${p.inizio.slice(11)}–${p.fine.slice(11)}</span></span><span class="row-detail strong">${esc(p.cliente)} · ${esc(p.persone)}</span>${CHEV}</button>`; }).join('')+'</div>';
+  }
+  cal.innerHTML=h;
+}
+
+function renderList(){
+  document.querySelectorAll('#mode-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.m===S.mode));
+  document.querySelectorAll('#lsala-seg button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.s===S.lsala));
+  const q=$('#f-q').value.trim().toLowerCase(), today=ymd(new Date());
+  let list=S.pren.filter(p=>{
+    if(p.tipo==='camera') return false;
+    const r=resById(p.risorsaId), day=p.inizio.slice(0,10);
+    if(S.mode==='prossime' && day<today) return false;
+    if(S.mode==='passate' && day>=today) return false;
+    if(S.lsala && salaOf(r)!==S.lsala) return false;
+    if(q){ const hay=[p.cliente,p.telefono,p.email,p.note,r&&r.nome].join(' ').toLowerCase(); if(!hay.includes(q)) return false; }
+    return true;
+  }).sort((a,b)=>a.inizio<b.inizio?-1:a.inizio>b.inizio?1:0);
+  if(S.mode==='passate') list.reverse();
+  const act=list.filter(p=>p.stato!=='cancellata');
+  $('#list-sub').textContent=`${act.length} ${act.length===1?'prenotazione':'prenotazioni'} · ${cop(act)} coperti`;
+  if(!list.length){ $('#list').innerHTML=`<div class="group" style="margin-top:20px"><div class="empty">${S.loaded||S.offline?(q?'<b>Nessun risultato</b>Prova con un altro nome o numero.':'<b>Nessuna prenotazione</b>Quelle nuove compariranno qui.'):'Caricamento…'}</div></div>`; return; }
+  const byDay=new Map(); for(const p of list){ const k=p.inizio.slice(0,10); if(!byDay.has(k)) byDay.set(k,[]); byDay.get(k).push(p); }
+  let h='';
+  for(const [k,ps] of byDay){
+    const d=dateOf(k), lab=k===today?'Oggi':k===ymd(addDays(new Date(),1))?'Domani':fmt(d,{weekday:'long',day:'numeric',month:'long'});
+    h+=`<div class="sec-h"><span>${esc(lab)}</span><span>${cop(ps.filter(p=>p.stato!=='cancellata'))} coperti</span></div><div class="group">`;
+    h+=ps.map(p=>{ const r=resById(p.risorsaId);
+      return `<button type="button" class="row${p.stato==='cancellata'?' cancel':''}" data-id="${esc(p.id)}"><span class="row-main"><span class="row-title">${esc(p.cliente)} · ${esc(p.persone)}</span><span class="row-sub">${esc(turnoLabel(p))} · ${esc(r?r.nome:'Tavolo eliminato')}${r?' · '+esc(salaOf(r)):''}</span></span><span class="pill st-${esc(p.stato)}">${esc(STATI[p.stato]||p.stato)}</span>${CHEV}</button>`; }).join('');
+    h+='</div>';
+  }
+  $('#list').innerHTML=h;
+}
+
+function renderTav(){
+  const list=sortRes(S.risorse), now=toStr(new Date()), A=S.canAdmin;
+  $('#tav-sub').textContent=`${list.length} ${list.length===1?'tavolo':'tavoli'} · ${list.reduce((n,r)=>n+(+r.capienza||0),0)} posti`;
+  let h='';
+  if(!S.loaded && !S.offline){ $('#tav').innerHTML='<div class="group" style="margin-top:20px"><div class="empty">Caricamento…</div></div>'; return; }
+  for(const s of SALE){
+    const l=list.filter(r=>salaOf(r)===s);
+    h+=`<div class="sec-h"><span>${s}</span><span>${l.reduce((n,r)=>n+(+r.capienza||0),0)} posti</span></div><div class="group">`;
+    h+=l.map(r=>{ const fut=live().filter(p=>p.risorsaId===r.id&&p.fine>=now).length;
+      const inner=`<span class="row-main"><span class="row-title">${esc(r.nome)}</span><span class="row-sub">${fut} ${fut===1?'prenotazione futura':'prenotazioni future'}</span></span><span class="row-detail">${esc(r.capienza||'?')} posti</span>`;
+      return A?`<button type="button" class="row" data-res="${esc(r.id)}">${inner}${CHEV}</button>`:`<div class="row">${inner}</div>`; }).join('');
+    if(A) h+=`<button type="button" class="row blue" data-addres="${s}">Aggiungi tavolo in ${s}</button>`;
+    if(!l.length && !A) h+='<div class="empty">Nessun tavolo</div>';
+    h+='</div>';
+  }
+  const c=cfg(), sch=k=>(c.schemi[k]||[]).map(t=>`${t.inizio}–${t.fine}`).join(', ');
+  const row=(title,detail)=> A?`<button type="button" class="row" data-turni>${'<span class="row-main"><span class="row-title">'+title+'</span><span class="row-sub">'+esc(detail)+'</span></span>'}${CHEV}</button>`:`<div class="row"><span class="row-main"><span class="row-title">${title}</span><span class="row-sub">${esc(detail)}</span></span></div>`;
+  h+=`<div class="sec-h">Turni</div><div class="group">${row('Orari dei turni',sch('2'))}</div>`;
+  h+=`<p class="sec-f">Tocca un tavolo per modificarlo, o i turni per cambiarne gli orari.</p>`;
+  h+=`<div class="group" style="margin-top:28px"><button type="button" class="row danger" data-logout>Esci da questo dispositivo</button></div>`;
+  $('#tav').innerHTML=h;
+}
+
+/* ---------- navigazione ---------- */
+function route(){ const h=location.hash.replace('#',''); S.tab=['oggi','elenco','tavoli'].includes(h)?h:'oggi'; window.scrollTo(0,0); render(); }
+window.addEventListener('hashchange', route);
+window.addEventListener('scroll', ()=>$('#navbar').classList.toggle('scrolled', window.scrollY>40), {passive:true});
+let rz; window.addEventListener('resize', ()=>{ clearTimeout(rz); rz=setTimeout(render,150); });
+function goDate(d){ S.date=sod(d); S.turnoSel=null; render(); }
+$('#nav-left').onclick=()=>goDate(new Date());
+$('#wk-prev').onclick=()=>goDate(addDays(S.date,-7));
+$('#wk-next').onclick=()=>goDate(addDays(S.date,7));
+$('#days').onclick=e=>{ const b=e.target.closest('.day'); if(b) goDate(dateOf(b.dataset.d)); };
+$('#turns').onclick=e=>{ const b=e.target.closest('.turn'); if(b && !wide()){ S.turnoSel=+b.dataset.t; render(); } };
+$('#sala-seg').onclick=e=>{ const b=e.target.closest('button'); if(b){ S.sala=b.dataset.s; render(); } };
+$('#lsala-seg').onclick=e=>{ const b=e.target.closest('button'); if(b){ S.lsala=b.dataset.s; render(); } };
+$('#mode-seg').onclick=e=>{ const b=e.target.closest('button'); if(b){ S.mode=b.dataset.m; render(); } };
+$('#f-q').addEventListener('input', renderList);
+$('#cal').onclick=e=>{
+  const r=e.target.closest('[data-id]'); if(r){ openBooking(r.dataset.id); return; }
+  const n=e.target.closest('[data-new]'); if(n) openBooking(null,{risorsaId:n.dataset.new, data:ymd(S.date), turno:n.dataset.t});
+};
+$('#list').onclick=e=>{ const r=e.target.closest('[data-id]'); if(r) openBooking(r.dataset.id); };
+$('#tav').onclick=e=>{
+  const r=e.target.closest('[data-res]'); if(r){ openTav(r.dataset.res); return; }
+  const a=e.target.closest('[data-addres]'); if(a){ openTav(null,a.dataset.addres); return; }
+  if(e.target.closest('[data-turni]')) openTurni();
+  if(e.target.closest('[data-logout]')) logout();
+};
+$('#nav-add').onclick=()=>{ if(S.tab==='tavoli') openTav(null, S.sala||'Sala 1'); else openBooking(null,{data:ymd(S.date), turno:S.tab==='oggi'&&!wide()?S.turnoSel:null}); };
+
+/* ---------- fogli ---------- */
+let openSheet=null;
+function showSheet(id){
+  const el=$('#'+id); el.hidden=false; openSheet=el; document.body.style.overflow='hidden';
+  requestAnimationFrame(()=>requestAnimationFrame(()=>el.classList.add('open')));
+}
+function hideSheet(){
+  const el=openSheet; if(!el) return; el.classList.remove('open'); openSheet=null; document.body.style.overflow='';
+  setTimeout(()=>{ if(!el.classList.contains('open')) el.hidden=true; },320);
+  S.editing=null;
+}
+document.querySelectorAll('.backdrop').forEach(b=>{
+  b.addEventListener('mousedown', e=>{ if(e.target===b) hideSheet(); });
+  b.querySelectorAll('[data-close]').forEach(x=>x.onclick=hideSheet);
+});
+document.addEventListener('keydown', e=>{ if(e.key==='Escape' && openSheet) hideSheet(); });
+function errText(e){
+  const c=e&&e.code;
+  if(c==='23503') return 'Questo tavolo ha ancora prenotazioni in archivio: eliminale prima.';
+  if(c==='23505') return 'Esiste già un elemento con questo nome.';
+  if(c==='PGRST301' || (e&&/JWT|jwt/.test(e.message||''))){ showLogin('La sessione è scaduta: inserisci di nuovo il codice.'); return 'Sessione scaduta.'; }
+  if(!navigator.onLine) return 'Sei offline: controlla la connessione e riprova.';
+  return 'Salvataggio non riuscito. Controlla la connessione e riprova.';
+}
+function setMsg(id,cls,t){ const m=$('#'+id); m.className='msg'+(cls?' '+cls:''); m.textContent=t||''; }
+
+/* ---------- prenotazione ---------- */
+function fillDurate(sel){
+  const opts=DURATE.slice(); if(sel && !opts.includes(sel)) opts.push(sel); opts.sort((a,b)=>a-b);
+  $('#b-durata').innerHTML=opts.map(m=>`<option value="${m}">${Math.floor(m/60)} h${m%60?(' '+m%60+' min'):''}</option>`).join('');
+  $('#b-durata').value=String(sel||120);
+}
+function fillTurni(keep){
+  const d=$('#b-data').value, sel=$('#b-turno'), turni=d?turniFor(dateOf(d)):[];
+  sel.innerHTML=turni.map(t=>`<option value="${t.idx}">${t.nome} · ${t.label}</option>`).join('')+'<option value="custom">Altro orario</option>';
+  sel.value = keep!=null && [...sel.options].some(o=>o.value===String(keep)) ? String(keep) : (turni.length?'0':'custom');
+  syncCustom();
+}
+function syncCustom(){ const c=$('#b-turno').value==='custom'; $('#b-custom-a').hidden=!c; $('#b-custom-b').hidden=!c; }
+function readTimes(){
+  const d=$('#b-data').value, r=resById($('#b-risorsa').value); if(!d) return null;
+  const v=$('#b-turno').value;
+  if(v!=='custom'){ const t=turniFor(dateOf(d))[+v]; return t?{r,ini:t.ini,fin:t.fin}:null; }
+  const o=$('#b-ora').value; if(!o) return null;
+  const ini=d+'T'+o; return {r,ini,fin:toStr(new Date(+parse(ini)+(+$('#b-durata').value)*60000))};
+}
+function fillTables(){
+  const sel=$('#b-risorsa'), cur=sel.value, t=readTimes(), ex=S.editing&&S.editing.id;
+  const busy=t?new Set(live().filter(p=>p.id!==ex&&overlaps(p,t.ini,t.fin)).map(p=>p.risorsaId)):new Set();
+  let h=''; for(const s of SALE){ const l=sortRes(S.risorse).filter(r=>salaOf(r)===s);
+    if(l.length) h+=`<optgroup label="${s}">`+l.map(r=>`<option value="${esc(r.id)}">${esc(r.nome)} · ${esc(r.capienza||'?')} posti${busy.has(r.id)?' · occupato':''}</option>`).join('')+'</optgroup>'; }
+  sel.innerHTML=h; if([...sel.options].some(o=>o.value===cur)) sel.value=cur;
+  return busy;
+}
+function setStato(st){ S.stato=st; document.querySelectorAll('#b-stato button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.st===st)); }
+function setPersone(n){ S.persone=Math.min(99,Math.max(1,n)); $('#b-persone-v').textContent=S.persone; }
+function checkLive(){
+  setMsg('bk-msg');
+  const t=readTimes(); if(!t||!t.r) return true;
+  if(S.stato!=='cancellata'){
+    const c=activeConflicts(t.r.id,t.ini,t.fin,S.editing&&S.editing.id);
+    if(c.length){ setMsg('bk-msg','bad',`${t.r.nome} è già prenotato da ${c[0].cliente} (${turnoLabel(c[0])}). Scegli un altro tavolo o un altro turno.`); return false; }
+  }
+  if(t.r.capienza && S.persone>t.r.capienza) setMsg('bk-msg','warn',`${S.persone} coperti su ${t.r.capienza} posti del tavolo.`);
+  return true;
+}
+$('#b-data').addEventListener('input',()=>{ fillTurni($('#b-turno').value); fillTables(); checkLive(); });
+$('#b-turno').addEventListener('input',()=>{ syncCustom(); if($('#b-turno').value==='custom' && !$('#b-ora').value){ const t=turniFor(dateOf($('#b-data').value))[0]; $('#b-ora').value=t?t.ini.slice(11):'20:00'; } fillTables(); checkLive(); });
+['#b-ora','#b-durata'].forEach(id=>$(id).addEventListener('input',()=>{ fillTables(); checkLive(); }));
+$('#b-risorsa').addEventListener('input',checkLive);
+$('#b-stato').onclick=e=>{ const b=e.target.closest('button'); if(b&&S.canWrite){ setStato(b.dataset.st); checkLive(); } };
+$('#p-minus').onclick=()=>{ setPersone(S.persone-1); checkLive(); };
+$('#p-plus').onclick=()=>{ setPersone(S.persone+1); checkLive(); };
+
+async function openBooking(id, preset={}){
+  if(!sortRes(S.risorse).length){ location.hash='#tavoli'; setNote('Prima di prenotare aggiungi almeno un tavolo.'); return; }
+  const p=id?S.pren.find(x=>x.id===id):null; if(id&&!p) return;
+  S.editing=p;
+  const del=$('#bk-del'); del.textContent='Elimina prenotazione'; del.dataset.armed='';
+  $('#bk-title').textContent=p?'Prenotazione':'Nuova prenotazione';
+  $('#bk-meta').textContent='';
+  if(p){
+    const day=p.inizio.slice(0,10); $('#b-data').value=day;
+    const t=turniFor(dateOf(day)).find(t=>t.ini===p.inizio&&t.fin===p.fine);
+    $('#b-ora').value=p.inizio.slice(11); fillDurate(Math.round((parse(p.fine)-parse(p.inizio))/60000));
+    fillTurni(t?t.idx:'custom'); fillTables(); $('#b-risorsa').value=p.risorsaId;
+    $('#b-cliente').value=p.cliente||''; setPersone(+p.persone||1); setStato(p.stato||'confermata');
+    $('#b-tel').value=p.telefono||''; $('#b-email').value=p.email||''; $('#b-note').value=p.note||'';
+  } else {
+    $('#b-data').value=preset.data||ymd(S.date); $('#b-ora').value=''; fillDurate(120);
+    fillTurni(preset.turno!=null?preset.turno:defaultTurno(dateOf($('#b-data').value)));
+    const busy=fillTables();
+    if(preset.risorsaId) $('#b-risorsa').value=preset.risorsaId;
+    else { const r=sortRes(S.risorse).find(r=>!busy.has(r.id)); if(r) $('#b-risorsa').value=r.id; }
+    $('#b-cliente').value=''; setPersone(2); setStato('confermata');
+    $('#b-tel').value=''; $('#b-email').value=''; $('#b-note').value='';
+  }
+  $('#bk-del-wrap').hidden=!p||!S.canWrite;
+  $('#bk-save').hidden=!S.canWrite;
+  $('#bk-form').querySelectorAll('input,select,textarea,.stepper button').forEach(el=>el.disabled=!S.canWrite);
+  checkLive(); showSheet('bk-sheet');
+  if(!p) setTimeout(()=>{ if(!matchMedia('(pointer:coarse)').matches) $('#b-cliente').focus(); },350);
+  if(p){
+    const bits=[];
+    if(p.telefono) bits.push(`Tel. ${p.telefono}`);
+    $('#bk-meta').innerHTML = p.telefono ? `<a class="call" href="tel:${esc(p.telefono.replace(/[^\d+]/g,''))}">Chiama ${esc(p.telefono)}</a>` : '';
+    if(p.creatoDa && S.user && S.user.profiles){
+      try{ const ps=await S.user.profiles([p.creatoDa]); const n=(ps&&ps[p.creatoDa]&&ps[p.creatoDa].name)||'un collega';
+        if(S.editing===p){ const s=document.createElement('div'); s.textContent=`Inserita da ${n}${p.creatoIl?' il '+new Date(p.creatoIl).toLocaleString('it-IT',{day:'numeric',month:'short',hour:'2-digit',minute:'2-digit'}):''}`; s.style.marginTop='6px'; $('#bk-meta').appendChild(s); } }catch(_){}
+    }
+  }
+}
+
+$('#bk-form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const t=readTimes(), cliente=$('#b-cliente').value.trim();
+  if(!t){ setMsg('bk-msg','bad','Indica data e turno.'); return; }
+  if(!t.r){ setMsg('bk-msg','bad','Scegli un tavolo.'); return; }
+  if(!cliente){ setMsg('bk-msg','bad','Inserisci il nome del cliente.'); $('#b-cliente').focus(); return; }
+  if(!checkLive()){ $('#bk-form .sheet-body').scrollTop=0; return; }
+  const old=S.editing;
+  const data={ risorsaId:t.r.id, tipo:'tavolo', inizio:t.ini, fine:t.fin, cliente, persone:S.persone, stato:S.stato,
+    telefono:$('#b-tel').value.trim(), email:$('#b-email').value.trim(), note:$('#b-note').value.trim(),
+    creatoDa: old?(old.creatoDa||null):S.uid, creatoIl: old?(old.creatoIl||null):new Date().toISOString(), modificatoIl:new Date().toISOString() };
+  const btn=$('#bk-save'); btn.disabled=true;
+  try{
+    const row={tavolo_id:data.risorsaId, inizio:data.inizio, fine:data.fine, cliente:data.cliente, persone:data.persone, stato:data.stato,
+      telefono:data.telefono, email:data.email, note:data.note, modificato:new Date().toISOString()};
+    const {error}=await (old?sb.from('prenotazioni').update(row).eq('id',old.id):sb.from('prenotazioni').insert(row));
+    if(error) throw (error.code==='23P01'?{code:'conflict'}:error);
+    await loadAll();
+    hideSheet(); render(); toast(old?'Prenotazione aggiornata':'Prenotazione salvata');
+  }catch(err){
+    $('#bk-form .sheet-body').scrollTop=0;
+    if(err&&err.code==='busy') setMsg('bk-msg','bad','Un collega sta prenotando lo stesso tavolo proprio ora. Riprova tra qualche secondo.');
+    else if(err&&err.code==='conflict'){ setMsg('bk-msg','bad',`Nel frattempo ${t.r.nome} è stato prenotato da un collega in questo turno. Scegli un altro tavolo.`); reload(); }
+    else setMsg('bk-msg','bad',errText(err));
+  }finally{ btn.disabled=false; }
+});
+$('#bk-del').onclick=async()=>{
+  const b=$('#bk-del'), p=S.editing; if(!p) return;
+  if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Tocca di nuovo per eliminare'; return; }
+  try{ const {error}=await sb.from('prenotazioni').delete().eq('id',p.id); if(error) throw error; await loadAll(); hideSheet(); render(); toast('Prenotazione eliminata'); }
+  catch(err){ setMsg('bk-msg','bad',errText(err)); }
+};
+
+/* ---------- tavolo ---------- */
+function setCap(n){ S.capienza=Math.min(99,Math.max(1,n)); $('#r-cap-v').textContent=S.capienza; }
+function setRSala(s){ S.rsala=s; document.querySelectorAll('#r-sala button').forEach(b=>b.setAttribute('aria-pressed', b.dataset.s===s)); }
+$('#c-minus').onclick=()=>setCap(S.capienza-1);
+$('#c-plus').onclick=()=>setCap(S.capienza+1);
+$('#r-sala').onclick=e=>{ const b=e.target.closest('button'); if(b) setRSala(b.dataset.s); };
+function openTav(id, sala){
+  if(!S.canAdmin) return;
+  const r=id?resById(id):null; S.resEditing=r;
+  $('#tav-title').textContent=r?r.nome:'Nuovo tavolo';
+  $('#r-nome').value=r?r.nome:''; setCap(r?(+r.capienza||4):4); setRSala(r?salaOf(r):(sala||'Sala 1'));
+  $('#tav-del-wrap').hidden=!r; const d=$('#tav-del'); d.dataset.armed=''; d.textContent='Elimina tavolo';
+  setMsg('tav-msg'); showSheet('tav-sheet');
+}
+$('#tav-form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const nome=$('#r-nome').value.trim(), old=S.resEditing;
+  if(!nome){ setMsg('tav-msg','bad','Dai un nome al tavolo.'); return; }
+  const dup=S.risorse.find(r=>String(r.nome).toLowerCase()===nome.toLowerCase()&&r!==old);
+  if(dup){ setMsg('tav-msg','bad',`Esiste già "${dup.nome}".`); return; }
+  const data={nome, tipo:'tavolo', capienza:S.capienza, zona:S.rsala};
+  try{
+    const row={nome:data.nome, posti:data.capienza, sala:data.zona};
+    const {error}=await (old?sb.from('tavoli').update(row).eq('id',old.id):sb.from('tavoli').insert(row));
+    if(error) throw error;
+    await loadAll();
+    hideSheet(); render(); toast(old?'Tavolo aggiornato':'Tavolo aggiunto');
+  }catch(err){ setMsg('tav-msg','bad',errText(err)); }
+});
+$('#tav-del').onclick=async()=>{
+  const r=S.resEditing, b=$('#tav-del'); if(!r) return;
+  const n=S.pren.filter(p=>p.risorsaId===r.id).length;
+  if(n){ setMsg('tav-msg','bad',`${r.nome} ha ${n} ${n===1?'prenotazione':'prenotazioni'} in archivio: spostale o eliminale prima.`); return; }
+  if(!b.dataset.armed){ b.dataset.armed='1'; b.textContent='Tocca di nuovo per eliminare'; return; }
+  try{ const {error}=await sb.from('tavoli').delete().eq('id',r.id); if(error) throw error; await loadAll(); hideSheet(); render(); toast('Tavolo eliminato'); }
+  catch(err){ setMsg('tav-msg','bad',errText(err)); }
+};
+
+/* ---------- turni ---------- */
+function openTurni(){
+  if(!S.canAdmin) return;
+  const c=cfg();
+  for(const k of ['2']){
+    const list=c.schemi[k]||DEFAULT_CFG.schemi[k];
+    $('#sch-'+k).innerHTML=list.map((t,i)=>`<div class="f-row"><label for="t-${k}-${i}-a">${i+1}° turno</label><div class="times"><input type="time" id="t-${k}-${i}-a" value="${esc(t.inizio)}" step="900"><span>–</span><input type="time" id="t-${k}-${i}-b" value="${esc(t.fine)}" step="900" aria-label="Fine ${i+1}° turno"></div></div>`).join('');
+  }
+  setMsg('turni-msg'); showSheet('turni-sheet');
+}
+async function saveCfg(next){ const {error}=await sb.from('impostazioni').upsert({id:1, turni:next.schemi['2']}); if(error) throw error; S.cfg=next; }
+$('#turni-form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const c=JSON.parse(JSON.stringify(cfg()));
+  for(const k of ['2']){
+    const list=[];
+    for(let i=0;i<+k;i++){
+      const a=$(`#t-${k}-${i}-a`).value, b=$(`#t-${k}-${i}-b`).value;
+      if(!a||!b){ setMsg('turni-msg','bad',`Completa gli orari del ${i+1}° turno .`); return; }
+      if(b<=a && b>'04:00'){ setMsg('turni-msg','bad',`Il ${i+1}° turno finisce prima di iniziare.`); return; }
+      if(i && list[i-1].fine>list[i-1].inizio && a<list[i-1].fine){ setMsg('turni-msg','bad',`Il ${i+1}° turno inizia prima della fine del ${i}°.`); return; }
+      list.push({inizio:a,fine:b});
+    }
+    c.schemi[k]=list;
+  }
+  c.settimana=GIORNI.map(()=>'2'); c.eccezioni={};
+  try{ await saveCfg(c); hideSheet(); S.turnoSel=null; render(); toast('Turni salvati'); }
+  catch(err){ setMsg('turni-msg','bad',errText(err)); }
+});
+
+/* ---------- dati (Supabase) ---------- */
+const CFG=window.APP_CONFIG||{};
+let sb=null, channel=null;
+const toLocal=v=>v?String(v).slice(0,16):v;
+const mapT=r=>({id:r.id, nome:r.nome, capienza:r.posti, zona:r.sala, tipo:'tavolo'});
+const mapP=r=>({id:r.id, risorsaId:r.tavolo_id, tipo:'tavolo', inizio:toLocal(r.inizio), fine:toLocal(r.fine), cliente:r.cliente, persone:r.persone, stato:r.stato, telefono:r.telefono||'', email:r.email||'', note:r.note||'', creatoIl:r.creato});
+async function loadAll(){
+  const from=ymd(addDays(new Date(),-60))+'T00:00';
+  const [t,c]=await Promise.all([sb.from('tavoli').select('*'), sb.from('impostazioni').select('turni').eq('id',1).maybeSingle()]);
+  if(t.error) throw t.error;
+  let all=[];
+  for(let k=0;k<20;k++){
+    const r=await sb.from('prenotazioni').select('*').gte('inizio',from).order('inizio').range(k*1000,k*1000+999);
+    if(r.error) throw r.error;
+    all=all.concat(r.data); if(r.data.length<1000) break;
+  }
+  S.risorse=t.data.map(mapT); S.pren=all.map(mapP);
+  if(c.data && Array.isArray(c.data.turni) && c.data.turni.length) S.cfg={schemi:{'2':c.data.turni}, settimana:DEFAULT_CFG.settimana, eccezioni:{}};
+  S.loaded=true; setNote(''); render();
+  if(S.editing && openSheet && openSheet.id==='bk-sheet') checkLive();
+}
+let rl; function reload(){ clearTimeout(rl); rl=setTimeout(()=>loadAll().catch(e=>{ if(!errText(e).startsWith('Sessione')) setNote('Connessione assente: le prenotazioni potrebbero non essere aggiornate.'); }),250); }
+
+function showLogin(text){
+  $('#login').hidden=false; $('#login-text').textContent=text||'Inserisci il codice di accesso del locale.';
+  $('#login-msg').textContent=''; $('#pin').value='';
+  if(channel){ sb.removeChannel(channel); channel=null; }
+}
+$('#login-form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  if(!sb) return;
+  const pin=$('#pin').value; if(!pin) return;
+  const b=$('#login-btn'); b.disabled=true; $('#login-msg').textContent='';
+  const {error}=await sb.auth.signInWithPassword({email:CFG.email, password:pin});
+  b.disabled=false;
+  if(error){ $('#login-msg').className='msg bad'; $('#login-msg').textContent = /invalid/i.test(error.message)?'Codice non corretto.':'Accesso non riuscito. Controlla la connessione.'; return; }
+  start();
+});
+async function logout(){ try{ await sb.auth.signOut(); }catch(_){} S.pren=[]; S.risorse=[]; S.loaded=false; showLogin(); }
+
+async function start(){
+  $('#login').hidden=true;
+  try{ await loadAll(); }catch(e){ setNote('Non riesco a leggere le prenotazioni. Controlla la connessione e riapri l\'app.'); }
+  if(!channel){
+    channel=sb.channel('modifiche').on('postgres_changes',{event:'*',schema:'public'},reload).subscribe();
+  }
+}
+document.addEventListener('visibilitychange',()=>{ if(!document.hidden && sb && $('#login').hidden) reload(); });
+setInterval(()=>{ if(!document.hidden && sb && $('#login').hidden) reload(); }, 60000);
+
+/* ---------- avvio ---------- */
+route();
+(async()=>{
+  if(!window.supabase || !CFG.supabaseUrl || !CFG.supabaseKey || !CFG.email || /INCOLLA/.test(CFG.supabaseUrl+CFG.supabaseKey)){
+    showLogin('App non ancora configurata: completa il file config.js seguendo le istruzioni.');
+    $('#pin').hidden=true; $('#login-btn').hidden=true; return;
+  }
+  sb=supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {auth:{persistSession:true, autoRefreshToken:true, storageKey:'prenotazioni-auth'}});
+  const {data}=await sb.auth.getSession();
+  if(data && data.session) start(); else showLogin();
+})();
+</script>
+</body>
+</html>
