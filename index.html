@@ -337,13 +337,38 @@ button.row:active,a.row:active{background:var(--fill)}
   </form>
 </div>
 
+<!-- FOGLIO LINK D'INVITO -->
+<div class="backdrop" id="inv-sheet" hidden>
+  <form class="sheet" id="inv-form" autocomplete="off" role="dialog" aria-modal="true" aria-labelledby="inv-title">
+    <div class="sheet-head">
+      <div class="left"><button class="navbtn" type="button" data-close>Chiudi</button></div>
+      <h2 id="inv-title">Link d'invito</h2>
+      <div class="right"></div>
+    </div>
+    <div class="sheet-body">
+      <p class="sec-f" style="margin-top:16px">Chi apre questo link entra senza digitare il codice e attiva subito Face ID. Mandalo solo allo staff: vale come il codice. Se cambi il codice, i vecchi link smettono di funzionare.</p>
+      <div class="sec-h">Conferma il codice di accesso</div>
+      <div class="group">
+        <div class="f-row"><label for="inv-code">Codice</label><input type="password" id="inv-code" autocomplete="current-password" placeholder="Il codice attuale"></div>
+      </div>
+      <div class="group" style="margin-top:16px"><button class="row blue center" type="submit">Crea link d'invito</button></div>
+      <div id="inv-out" hidden>
+        <div class="sec-h">Link per lo staff</div>
+        <div class="group"><div class="f-row stack"><input type="text" id="inv-link" readonly aria-label="Link d'invito" style="text-align:left;color:var(--label);font-size:14px"></div></div>
+        <div class="group" style="margin-top:16px"><button class="row blue center" type="button" id="inv-share">Condividi link</button></div>
+      </div>
+      <div class="msg" id="inv-msg"></div>
+    </div>
+  </form>
+</div>
+
 <div class="toast" id="toast" role="status"></div>
 
 <div class="login" id="lock" hidden>
   <div class="login-box">
     <img src="icon-180.png" alt="">
     <h1>Prenotazioni</h1>
-    <p>App bloccata. Sbloccala con Face ID per continuare.</p>
+    <p id="lock-text">App bloccata. Sbloccala con Face ID per continuare.</p>
     <button class="big" type="button" id="unlock-btn">Sblocca con Face ID</button>
     <button class="link-btn" type="button" id="unlock-code">Usa il codice di accesso</button>
     <p class="msg" id="lock-msg"></p>
@@ -537,6 +562,7 @@ function renderTav(){
   const row=(title,detail)=> A?`<button type="button" class="row" data-turni>${'<span class="row-main"><span class="row-title">'+title+'</span><span class="row-sub">'+esc(detail)+'</span></span>'}${CHEV}</button>`:`<div class="row"><span class="row-main"><span class="row-title">${title}</span><span class="row-sub">${esc(detail)}</span></span></div>`;
   h+=`<div class="sec-h">Turni</div><div class="group">${row('Orari dei turni',sch('2'))}</div>`;
   h+=`<p class="sec-f">Tocca un tavolo per modificarlo, o i turni per cambiarne gli orari.</p>`;
+  h+=`<div class="sec-h">Staff</div><div class="group"><button type="button" class="row" data-invite><span class="row-main"><span class="row-title">Link d'invito per lo staff</span><span class="row-sub">Per entrare senza codice, con Face ID</span></span>${CHEV}</button></div>`;
   if(S.bio){ const on=!!lockId();
     h+=`<div class="sec-h">Questo telefono</div><div class="group"><div class="row"><span class="row-main"><span class="row-title">Sblocco con Face ID</span><span class="row-sub">${on?'Chiesto all\'apertura dell\'app':'Disattivato'}</span></span><button type="button" class="switch" role="switch" aria-checked="${on}" aria-label="Sblocco con Face ID" data-bio></button></div></div><p class="sec-f">L'app si blocca quando la riapri o dopo 2 minuti in background, e si sblocca con il viso. Vale solo per questo telefono.</p>`; }
   h+=`<div class="group" style="margin-top:28px"><button type="button" class="row danger" data-logout>Esci da questo dispositivo</button></div>`;
@@ -569,6 +595,7 @@ $('#tav').onclick=e=>{
   if(e.target.closest('[data-turni]')) openTurni();
   if(e.target.closest('[data-logout]')) logout();
   if(e.target.closest('[data-bio]')) toggleBio();
+  if(e.target.closest('[data-invite]')) openInvite();
 };
 $('#nav-add').onclick=()=>{ if(S.tab==='tavoli') openTav(null, S.sala||'Sala 1'); else openBooking(null,{data:ymd(S.date), turno:S.tab==='oggi'&&!wide()?S.turnoSel:null}); };
 
@@ -829,7 +856,8 @@ async function logout(){ try{ await sb.auth.signOut(); }catch(_){} S.pren=[]; S.
 async function start(fromLogin){
   $('#login').hidden=true;
   await checkBio();
-  if(!fromLogin) showLock();
+  if(!fromLogin){ if(lockId()) overlay('unlock'); }
+  else if(S.bio && !lockId() && !bioDismissed()) overlay('setup');
   try{ await loadAll(); }catch(e){ setNote('Non riesco a leggere le prenotazioni. Controlla la connessione e riapri l\'app.'); }
   if(!channel){
     channel=sb.channel('modifiche').on('postgres_changes',{event:'*',schema:'public'},reload).subscribe();
@@ -845,34 +873,87 @@ const unb64u=s=>Uint8Array.from(atob(s.replace(/-/g,'+').replace(/_/g,'/')+'==='
 function lockId(){ try{ return localStorage.getItem(LOCK_KEY); }catch(_){ return null; } }
 let hiddenAt=0;
 async function checkBio(){ try{ S.bio=!!(window.PublicKeyCredential && await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable()); }catch(_){ S.bio=false; } }
+async function enableBio(){
+  const cred=await navigator.credentials.create({publicKey:{
+    challenge:crypto.getRandomValues(new Uint8Array(32)),
+    rp:{name:'Prenotazioni'},
+    user:{id:crypto.getRandomValues(new Uint8Array(16)), name:'Prenotazioni', displayName:'Prenotazioni – staff'},
+    pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
+    authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'preferred'},
+    timeout:60000}});
+  localStorage.setItem(LOCK_KEY, b64u(cred.rawId));
+}
+function bioDismissed(){ try{ return localStorage.getItem(LOCK_KEY+'-no')==='1'; }catch(_){ return false; } }
 async function toggleBio(){
   if(lockId()){ try{ localStorage.removeItem(LOCK_KEY); }catch(_){} render(); toast('Face ID disattivato'); return; }
-  try{
-    const cred=await navigator.credentials.create({publicKey:{
-      challenge:crypto.getRandomValues(new Uint8Array(32)),
-      rp:{name:'Prenotazioni'},
-      user:{id:crypto.getRandomValues(new Uint8Array(16)), name:'Prenotazioni', displayName:'Prenotazioni – staff'},
-      pubKeyCredParams:[{type:'public-key',alg:-7},{type:'public-key',alg:-257}],
-      authenticatorSelection:{authenticatorAttachment:'platform', userVerification:'required', residentKey:'preferred'},
-      timeout:60000}});
-    localStorage.setItem(LOCK_KEY, b64u(cred.rawId));
-    render(); toast('Face ID attivato');
-  }catch(e){ setNote(e&&e.name==='NotAllowedError'?'Attivazione di Face ID annullata.':'Questo telefono non permette di attivare Face ID per l\'app.'); }
+  try{ await enableBio(); render(); toast('Face ID attivato'); }
+  catch(e){ setNote(e&&e.name==='NotAllowedError'?'Attivazione di Face ID annullata.':'Questo telefono non permette di attivare Face ID per l\'app.'); }
 }
-function showLock(){ if(!lockId()) return; $('#lock').hidden=false; $('#lock-msg').textContent=''; document.body.style.overflow='hidden'; }
-async function unlock(){
-  const id=lockId(); if(!id){ $('#lock').hidden=true; return; }
+const OVERLAY={
+  unlock:['App bloccata. Sbloccala con Face ID per continuare.','Sblocca con Face ID','Usa il codice di accesso'],
+  setup:['Benvenuto! Attiva Face ID: da ora l\'app si apre con il tuo viso, senza codice.','Attiva Face ID','Non ora'],
+  install:['Per usarla come un\'app: tocca Condividi (il quadrato con la freccia) e poi «Aggiungi alla schermata Home». Poi apri Prenotazioni dalla Home: entrerai con Face ID.',null,'Continua nel browser']
+};
+function overlay(mode){
+  const t=OVERLAY[mode]; S.overlay=mode;
+  $('#lock-text').textContent=t[0]; $('#unlock-btn').hidden=!t[1]; if(t[1]) $('#unlock-btn').textContent=t[1];
+  $('#unlock-code').textContent=t[2]; $('#lock-msg').textContent=''; $('#lock').hidden=false; document.body.style.overflow='hidden';
+  if(mode==='unlock') unlock(true);
+}
+function hideOverlay(){ $('#lock').hidden=true; S.overlay=null; document.body.style.overflow=openSheet?'hidden':''; }
+let unlocking=false;
+async function unlock(silent){
+  const id=lockId(); if(!id){ hideOverlay(); return; }
+  if(unlocking) return; unlocking=true;
   try{
     await navigator.credentials.get({publicKey:{challenge:crypto.getRandomValues(new Uint8Array(32)), allowCredentials:[{type:'public-key', id:unb64u(id), transports:['internal']}], userVerification:'required', timeout:60000}});
-    $('#lock').hidden=true; document.body.style.overflow=openSheet?'hidden':''; reload();
-  }catch(e){ $('#lock-msg').className='msg bad'; $('#lock-msg').textContent='Sblocco non riuscito. Riprova o usa il codice di accesso.'; }
+    hideOverlay(); reload();
+  }catch(e){ if(!silent){ $('#lock-msg').className='msg bad'; $('#lock-msg').textContent='Sblocco non riuscito. Riprova o usa il codice di accesso.'; } }
+  finally{ unlocking=false; }
 }
-$('#unlock-btn').onclick=unlock;
-$('#unlock-code').onclick=async()=>{ $('#lock').hidden=true; await logout(); };
+$('#unlock-btn').onclick=async()=>{
+  if(S.overlay==='unlock') return unlock(false);
+  if(S.overlay==='setup'){
+    try{ await enableBio(); hideOverlay(); render(); toast('Face ID attivato'); }
+    catch(e){ $('#lock-msg').className='msg bad'; $('#lock-msg').textContent=e&&e.name==='NotAllowedError'?'Attivazione annullata. Riprova o tocca «Non ora».':'Questo telefono non permette di usare Face ID per l\'app.'; }
+  }
+};
+$('#unlock-code').onclick=async()=>{
+  if(S.overlay==='unlock'){ hideOverlay(); await logout(); }
+  else if(S.overlay==='setup'){ try{ localStorage.setItem(LOCK_KEY+'-no','1'); }catch(_){} hideOverlay(); }
+  else if(S.overlay==='install'){ hideOverlay(); useInvite(); }
+};
 document.addEventListener('visibilitychange',()=>{
   if(document.hidden){ hiddenAt=Date.now(); return; }
-  if(hiddenAt && Date.now()-hiddenAt>LOCK_AFTER && $('#login').hidden && lockId()) showLock();
+  if(hiddenAt && Date.now()-hiddenAt>LOCK_AFTER && $('#login').hidden && lockId() && !S.overlay) overlay('unlock');
 });
+
+/* ---------- link d'invito ---------- */
+let INVITE=null;
+if(location.hash.startsWith('#invito-')){ try{ INVITE=new TextDecoder().decode(unb64u(location.hash.slice(8))); }catch(_){} }
+const STANDALONE = navigator.standalone===true || matchMedia('(display-mode: standalone)').matches;
+const cleanHash=()=>history.replaceState(null,'',location.pathname+location.search+'#oggi');
+async function useInvite(){
+  cleanHash();
+  const {error}=await sb.auth.signInWithPassword({email:CFG.email, password:INVITE});
+  if(error) showLogin(/invalid/i.test(error.message)?'Questo link d\'invito non è più valido: chiedi il link nuovo o il codice di accesso.':'Accesso non riuscito. Controlla la connessione e riapri il link.');
+  else start(true);
+}
+function openInvite(){ $('#inv-code').value=''; $('#inv-out').hidden=true; setMsg('inv-msg'); showSheet('inv-sheet'); }
+$('#inv-form').addEventListener('submit', async e=>{
+  e.preventDefault();
+  const code=$('#inv-code').value; if(!code) return;
+  const {error}=await sb.auth.signInWithPassword({email:CFG.email, password:code});
+  if(error){ setMsg('inv-msg','bad', /invalid/i.test(error.message)?'Codice non corretto.':'Controllo non riuscito. Riprova.'); return; }
+  $('#inv-link').value=location.origin+location.pathname+'#invito-'+b64u(new TextEncoder().encode(code));
+  $('#inv-out').hidden=false; setMsg('inv-msg');
+});
+$('#inv-share').onclick=async()=>{
+  const url=$('#inv-link').value, text='App Prenotazioni: apri il link dal telefono, aggiungila alla schermata Home e attiva Face ID.';
+  if(navigator.share){ try{ await navigator.share({title:'Prenotazioni', text, url}); return; }catch(e){ if(e&&e.name==='AbortError') return; } }
+  try{ await navigator.clipboard.writeText(url); toast('Link copiato'); }
+  catch(_){ $('#inv-link').select(); setMsg('inv-msg','info','Tieni premuto sul link per copiarlo.'); }
+};
 
 /* ---------- avvio ---------- */
 route();
@@ -883,7 +964,10 @@ route();
   }
   sb=supabase.createClient(CFG.supabaseUrl, CFG.supabaseKey, {auth:{persistSession:true, autoRefreshToken:true, storageKey:'prenotazioni-auth'}});
   const {data}=await sb.auth.getSession();
-  if(data && data.session) start(); else showLogin();
+  if(data && data.session){ if(INVITE) cleanHash(); start(); }
+  else if(INVITE && !STANDALONE && /iPhone|iPad|iPod|Android/i.test(navigator.userAgent)) overlay('install');
+  else if(INVITE) useInvite();
+  else showLogin();
 })();
 </script>
 </body>
